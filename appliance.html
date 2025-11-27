@@ -2,13 +2,19 @@
 <html lang="da">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Apparat-prisberegner interaktiv</title>
-<link rel="stylesheet" href="styles.css">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Apparat-prisberegner</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
 <style>
-#applianceChart { cursor: pointer; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  margin:10px;
+  background-color:#111;
+  color:#eee;
+}
+h1 { font-size:1.5em; }
+label, input, select { display:block; margin-top:10px; }
+#applianceChart { margin-top:20px; max-width:100%; }
 </style>
 </head>
 <body>
@@ -24,93 +30,104 @@
 <label>Brugstid i timer:</label>
 <input type="number" id="hours" value="1" min="0.1" step="0.1">
 
+<label>Vælg starttidspunkt (0-23): <span id="startLabel">0</span>:00</label>
+<input type="range" id="preferredStart" min="0" max="23" value="0" step="1" oninput="document.getElementById('startLabel').textContent = this.value; calculate()">
+
 <div id="totalCost"></div>
 <div id="preferredCost"></div>
 <div id="bestTime"></div>
-<canvas id="applianceChart" width="400" height="300" style="margin-top:30px;"></canvas>
 
-<p><a href="index.html">← Tilbage til DK1-priser</a></p>
+<canvas id="applianceChart" width="400" height="300"></canvas>
 
 <script>
-const netTarif = 0.55;
-const elAfgift = 0.80;
+const elAfgift = 0.90;
+const systemTarif = 0.092;
+const transport = 0.076;
 const moms = 1.25;
 
-function getTotalPrice(spot){ return (spot + netTarif + elAfgift) * moms; }
+// Timebaseret nettarif
+const nettTarifPerHour = [
+  0.07,0.07,0.07,0.07,0.07,0.07, // 00-05
+  0.20,0.20,0.20,0.20,0.20,0.20,0.20,0.20,0.20,0.20,0.20, // 06-16
+  0.61,0.61,0.61,0.61, // 17-20
+  0.20,0.20,0.20 // 21-23
+];
 
-let costPerHour = [];
-let hoursLabels = [];
-let power = 1.5;
-let duration = 1;
 let chartInstance = null;
-let bestIndex = 0;
 
-async function fetchData(){
-    const url = `https://api.energidataservice.dk/dataset/Elspotprices?filter={"PriceArea":"DK1"}&sort=HourUTC ASC&limit=24`;
-    const res = await fetch(url);
-    const data = await res.json();
-    hoursLabels = data.records.map(r=>new Date(r.HourUTC).getHours());
-    const spotPrices = data.records.map(r=>(r.SpotPriceEUR*7.45)/1000);
-    costPerHour = spotPrices.map(p=>getTotalPrice(p)*power);
-    findBestPeriod();
-    drawChart();
+function getTotalPrice(spot, hour, power){
+  const nett = nettTarifPerHour[hour];
+  return (spot + elAfgift + systemTarif + transport + nett) * moms * power;
 }
 
-function findBestPeriod(){
-    duration = parseFloat(document.getElementById("hours").value);
-    let minSum = Infinity;
-    bestIndex = 0;
-    for(let i=0; i<=costPerHour.length-duration; i++){
-        const sum = costPerHour.slice(i,i+duration).reduce((a,b)=>a+b,0);
-        if(sum < minSum){ minSum = sum; bestIndex = i; }
-    }
-    document.getElementById("totalCost").innerHTML = `Billigste totalpris: ${minSum.toFixed(2)} kr`;
-    document.getElementById("bestTime").innerHTML = `Anbefalet starttidspunkt: ${hoursLabels[bestIndex]}:00 i ${duration} timer`;
+async function calculate(){
+  const power = parseFloat(document.getElementById("appliance").value);
+  const duration = parseFloat(document.getElementById("hours").value);
+  const preferred = parseInt(document.getElementById("preferredStart").value);
+
+  // Hent spotpriser
+  const url = `https://api.energidataservice.dk/dataset/Elspotprices?filter={"PriceArea":"DK1"}&sort=HourUTC ASC&limit=24`;
+  const res = await fetch(url);
+  const data = await res.json();
+
+  const hoursLabels = data.records.map(r=>{
+    const d = new Date(r.HourUTC);
+    return d.getHours();
+  });
+
+  const spotPrices = data.records.map(r=>(r.SpotPriceEUR*7.45)/1000);
+  const totalPrices = spotPrices.map((p,i)=>getTotalPrice(p,i,power));
+
+  // Find billigste periode
+  let minSum = Infinity, bestIndex = 0;
+  for(let i=0;i<=totalPrices.length-duration;i++){
+    const sum = totalPrices.slice(i,i+duration).reduce((a,b)=>a+b,0);
+    if(sum < minSum){ minSum = sum; bestIndex = i; }
+  }
+
+  document.getElementById("totalCost").innerHTML = `Billigste totalpris: ${minSum.toFixed(2)} kr`;
+  document.getElementById("bestTime").innerHTML = `Anbefalet starttidspunkt: ${hoursLabels[bestIndex]}:00 i ${duration} timer`;
+
+  // Pris hvis valgt start
+  let preferredSumText = '';
+  if(preferred>=0 && preferred+duration<=24){
+    const preferredSum = totalPrices.slice(preferred, preferred+duration).reduce((a,b)=>a+b,0);
+    preferredSumText = `Pris hvis du starter kl ${hoursLabels[preferred]}:00 → ${preferredSum.toFixed(2)} kr`;
+  }
+  document.getElementById("preferredCost").innerHTML = preferredSumText;
+
+  // Farvekodning
+  const backgroundColors = totalPrices.map((p,i)=>{
+    if(i>=bestIndex && i<bestIndex+duration) return '#4CAF50'; // billigste
+    if(preferred>=0 && i>=preferred && i<preferred+duration) return '#2196F3'; // valgt
+    if(p>0.5) return '#FF3B30'; // høj pris
+    return '#FFA500'; // øvrige
+  });
+
+  const ctx = document.getElementById('applianceChart').getContext('2d');
+  if(chartInstance) chartInstance.destroy();
+  chartInstance = new Chart(ctx,{
+    type:'bar',
+    data:{
+      labels: hoursLabels.map(h=>h+":00"),
+      datasets:[{
+        label:'Pris pr. time (kr)',
+        data: totalPrices.map(p=>p.toFixed(2)),
+        backgroundColor: backgroundColors
+      }]
+    },
+    options:{responsive:true,plugins:{legend:{display:false}},scales:{y:{beginAtZero:true}}}
+  });
 }
 
-function drawChart(preferredIndex = null){
-    if(chartInstance) chartInstance.destroy();
-    chartInstance = new Chart(document.getElementById('applianceChart').getContext('2d'),{
-        type:'bar',
-        data:{
-            labels: hoursLabels.map(h=>h+":00"),
-            datasets:[{
-                label:'Pris pr. time (kr)',
-                data: costPerHour.map(p=>p.toFixed(2)),
-                backgroundColor: costPerHour.map((p,i)=>{
-                    if(i>=bestIndex && i<bestIndex+duration) return '#4CAF50'; // billigste
-                    if(preferredIndex!==null && i>=preferredIndex && i<preferredIndex+duration) return '#2196F3'; // valgt
-                    return '#FFA500';
-                })
-            }]
-        },
-        options:{
-            responsive:true,
-            plugins:{legend:{display:false}},
-            onClick: function(evt, elements){
-                if(!elements.length) return;
-                const index = elements[0].index;
-                if(index+duration>24) return;
-                const sum = costPerHour.slice(index,index+duration).reduce((a,b)=>a+b,0);
-                document.getElementById("preferredCost").innerHTML = `Pris hvis du starter kl ${hoursLabels[index]}:00 → ${sum.toFixed(2)} kr`;
-                drawChart(index);
-            }
-        }
-    });
-}
+// Event listeners
+document.getElementById("appliance").addEventListener("change", calculate);
+document.getElementById("hours").addEventListener("change", calculate);
+document.getElementById("preferredStart").addEventListener("input", calculate);
 
-// Update power/duration dynamically
-document.getElementById("appliance").addEventListener("change", e=>{
-    power = parseFloat(e.target.value);
-    fetchData();
-});
-document.getElementById("hours").addEventListener("change", e=>{
-    duration = parseFloat(e.target.value);
-    fetchData();
-});
-
-// Initial load
-fetchData();
+// Initial load + auto-opdatering hvert 5. minut
+calculate();
+setInterval(calculate, 300000); // 300000ms = 5min
 </script>
 </body>
 </html>
