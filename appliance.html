@@ -6,12 +6,7 @@
 <title>Apparat-prisberegner</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <style>
-body {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  margin:10px;
-  background-color:#111;
-  color:#eee;
-}
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; margin:10px; background-color:#111; color:#eee; }
 h1 { font-size:1.5em; }
 label, select, input, button { display:block; margin-top:10px; }
 #applianceChart { margin-top:20px; max-width:100%; }
@@ -32,9 +27,9 @@ button { background:#2196F3; color:#fff; border:none; padding:5px 10px; border-r
 <input type="number" id="hours" value="1" min="0.1" step="0.1">
 
 <label>Vælg starttidspunkt (0-23): <span id="startLabel">0</span>:00</label>
-<input type="range" id="preferredStart" min="0" max="23" value="0" step="1" oninput="document.getElementById('startLabel').textContent = this.value; calculate()">
+<input type="range" id="preferredStart" min="0" max="23" value="0" step="1" oninput="document.getElementById('startLabel').textContent=this.value; calculate()">
 
-<div style="margin-top:15px;">
+<div style="margin-top:10px;">
   <button onclick="prevDay()">⟵ Forrige dag</button>
   <button onclick="nextDay()">Næste dag ⟶</button>
   <span id="dayLabel"></span>
@@ -46,39 +41,25 @@ button { background:#2196F3; color:#fff; border:none; padding:5px 10px; border-r
 <canvas id="applianceChart" width="400" height="300"></canvas>
 
 <script>
-const elAfgift = 0.90;
-const systemTarif = 0.092;
-const transport = 0.076;
-const moms = 1.25;
-
-// Timebaseret nettarif
-const nettTarifPerHour = [
-  0.07,0.07,0.07,0.07,0.07,0.07, // 00-05
-  0.20,0.20,0.20,0.20,0.20,0.20,0.20,0.20,0.20,0.20,0.20, // 06-16
-  0.61,0.61,0.61,0.61, // 17-20
-  0.20,0.20,0.20 // 21-23
-];
-
-let chartInstance = null;
-let currentDate = new Date(); // start med i dag
-
-function getTotalPrice(spot, hour, power){
-  const nett = nettTarifPerHour[hour];
-  return (spot + elAfgift + systemTarif + transport + nett) * moms * power;
-}
+const elAfgift = 0.90, systemTarif = 0.092, transport = 0.076, moms = 1.25;
+const nettTarifPerHour = [0.07,0.07,0.07,0.07,0.07,0.07,0.20,0.20,0.20,0.20,0.20,0.20,0.20,0.20,0.20,0.20,0.20,0.61,0.61,0.61,0.61,0.20,0.20,0.20];
+let chartInstance=null;
+let currentDate = new Date();
 
 function formatDate(d){ return d.toISOString().split('T')[0]; }
+function getTotalPrice(spot,hour,power){ return (spot+elAfgift+systemTarif+transport+nettTarifPerHour[hour])*moms*power; }
 
 async function calculate(){
   const power = parseFloat(document.getElementById("appliance").value);
   const duration = parseFloat(document.getElementById("hours").value);
   const preferred = parseInt(document.getElementById("preferredStart").value);
-
   const dayStr = formatDate(currentDate);
   document.getElementById("dayLabel").textContent = dayStr;
 
-  // Hent spotpriser for 24 timer i valgt dag
-  const url = `https://api.energidataservice.dk/dataset/Elspotprices?filter={"PriceArea":"DK1","HourUTC":"${dayStr}T00:00:00Z"}&sort=HourUTC ASC&limit=24`;
+  const start = `${dayStr}T00:00:00Z`;
+  const end   = `${dayStr}T23:59:59Z`;
+  const url = `https://api.energidataservice.dk/dataset/Elspotprices?filter={"PriceArea":"DK1","HourUTC":{"gte":"${start}","lte":"${end}"}}&sort=HourUTC ASC&limit=24`;
+
   const res = await fetch(url);
   const data = await res.json();
   if(!data.records.length){ alert("Ingen data for denne dag"); return; }
@@ -87,29 +68,26 @@ async function calculate(){
   const spotPrices = data.records.map(r=>(r.SpotPriceEUR*7.45)/1000);
   const totalPrices = spotPrices.map((p,i)=>getTotalPrice(p,i,power));
 
-  // Find billigste periode
-  let minSum = Infinity, bestIndex = 0;
+  let minSum=Infinity,bestIndex=0;
   for(let i=0;i<=totalPrices.length-duration;i++){
-    const sum = totalPrices.slice(i,i+duration).reduce((a,b)=>a+b,0);
-    if(sum < minSum){ minSum = sum; bestIndex = i; }
+    const sum=totalPrices.slice(i,i+duration).reduce((a,b)=>a+b,0);
+    if(sum<minSum){minSum=sum;bestIndex=i;}
   }
 
   document.getElementById("totalCost").innerHTML = `Billigste totalpris: ${minSum.toFixed(2)} kr`;
   document.getElementById("bestTime").innerHTML = `Anbefalet starttidspunkt: ${hoursLabels[bestIndex]}:00 i ${duration} timer`;
 
-  // Pris hvis valgt start
-  let preferredSumText = '';
+  let preferredSumText='';
   if(preferred>=0 && preferred+duration<=24){
-    const preferredSum = totalPrices.slice(preferred, preferred+duration).reduce((a,b)=>a+b,0);
+    const preferredSum = totalPrices.slice(preferred,preferred+duration).reduce((a,b)=>a+b,0);
     preferredSumText = `Pris hvis du starter kl ${hoursLabels[preferred]}:00 → ${preferredSum.toFixed(2)} kr`;
   }
   document.getElementById("preferredCost").innerHTML = preferredSumText;
 
-  // Farvekodning
   const backgroundColors = totalPrices.map((p,i)=>{
-    if(i>=bestIndex && i<bestIndex+duration) return '#4CAF50'; // billigste
-    if(preferred>=0 && i>=preferred && i<preferred+duration) return '#2196F3'; // valgt
-    if(p/power>0.5) return '#FF3B30'; // høj pris per kWh
+    if(i>=bestIndex && i<bestIndex+duration) return '#4CAF50';
+    if(preferred>=0 && i>=preferred && i<preferred+duration) return '#2196F3';
+    if(p/power>0.5) return '#FF3B30';
     return '#FFA500';
   });
 
@@ -122,18 +100,15 @@ async function calculate(){
   });
 }
 
-// Dag skifte funktioner
 function prevDay(){ currentDate.setDate(currentDate.getDate()-1); calculate(); }
 function nextDay(){ currentDate.setDate(currentDate.getDate()+1); calculate(); }
 
-// Event listeners
 document.getElementById("appliance").addEventListener("change", calculate);
 document.getElementById("hours").addEventListener("change", calculate);
 document.getElementById("preferredStart").addEventListener("input", calculate);
 
-// Initial load + auto-opdatering hvert 5. minut
 calculate();
-setInterval(calculate, 300000);
+setInterval(calculate,300000);
 </script>
 </body>
 </html>
