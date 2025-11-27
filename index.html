@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>DK1 Strømpriser i dag</title>
+<title>DK1 Strømpriser</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <style>
 body {
@@ -15,11 +15,22 @@ body {
 h1 { font-size: 1.5em; }
 #currentPrice { margin-bottom: 15px; }
 canvas { max-width: 100%; }
+button {
+  background:#2196F3;
+  color:#fff;
+  border:none;
+  padding:5px 10px;
+  border-radius:5px;
+  margin-top:10px;
+}
 </style>
 </head>
 <body>
 <h1>⚡ DK1 Strømpriser i dag</h1>
 <div id="currentPrice"></div>
+
+<button onclick="window.location.href='appliance.html'">➡ Gå til apparat-prisberegner</button>
+
 <canvas id="priceChart" width="400" height="300"></canvas>
 
 <script>
@@ -46,11 +57,7 @@ async function updatePrices(){
   const res = await fetch(url);
   const data = await res.json();
 
-  const hoursLabels = data.records.map(r=>{
-    const d = new Date(r.HourUTC);
-    return d.getHours();
-  });
-
+  const hoursLabels = data.records.map(r=>new Date(r.HourUTC).getHours());
   const spotPrices = data.records.map(r=>(r.SpotPriceEUR*7.45)/1000);
   const totalPrices = spotPrices.map((p,i)=>getTotalPrice(p,i));
 
@@ -76,7 +83,6 @@ async function updatePrices(){
     return '#FFA500'; // øvrige
   });
 
-  // Graf
   const ctx = document.getElementById('priceChart').getContext('2d');
   if(window.chartInstance) window.chartInstance.destroy();
   window.chartInstance = new Chart(ctx,{
@@ -92,16 +98,14 @@ async function updatePrices(){
     options:{
       responsive:true,
       plugins:{legend:{display:false}},
-      scales:{
-        y:{beginAtZero:true}
-      }
+      scales:{y:{beginAtZero:true}}
     }
   });
 }
 
-// Initial load + opdatering hvert 5. minut
+// Initial load + auto-opdatering hvert 5. minut
 updatePrices();
-setInterval(updatePrices, 300000); // 300000ms = 5min
+setInterval(updatePrices, 300000);
 </script>
 </body>
 </html>
