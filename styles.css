@@ -2,8 +2,10 @@ body {
   font-family: Arial, sans-serif;
   text-align: center;
   padding: 30px;
-  background: #111;
-  color: #fff;
+  margin:0;
+  background: #fff;
+  color: #111;
+  transition: background 0.3s, color 0.3s;
 }
 
 h1 {
@@ -14,12 +16,22 @@ h1 {
 #price {
   font-size: 48px;
   font-weight: bold;
-  color: #4CAF50;
   margin-top: 20px;
 }
 
 #time {
   margin-top: 10px;
-  color: #bbb;
+  color: #666;
   font-size: 14px;
+}
+
+/* Dark mode */
+@media (prefers-color-scheme: dark) {
+  body {
+    background: #111;
+    color: #fff;
+  }
+  #time {
+    color: #bbb;
+  }
 }
