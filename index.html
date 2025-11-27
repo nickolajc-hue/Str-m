@@ -5,30 +5,95 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Strømpris DK1</title>
 <link rel="stylesheet" href="styles.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
 <h1>⚡ Strømpris i Jylland (DK1)</h1>
-<div id="price">Henter pris...</div>
+<div id="price">Henter pris…</div>
 <div id="time"></div>
 
-<script>
-async function fetchPrice() {
-    const url = "https://api.energidataservice.dk/dataset/Elspotprices?filter={\"PriceArea\":\"DK1\"}&sort=HourUTC%20DESC&limit=1";
+<canvas id="priceChart" width="400" height="300" style="margin-top:30px;"></canvas>
 
+<script>
+const lowPrice = 1.50;
+const highPrice = 3.50;
+
+// Farve efter pris
+function getColor(price) {
+  if(price < lowPrice) return "#4CAF50";  // Grøn
+  else if(price < highPrice) return "#FFA500"; // Orange
+  else return "#FF3B30"; // Rød
+}
+
+// Hent 24 timer data
+async function fetchDayData() {
+    const today = new Date().toISOString().split("T")[0];
+    const url = `https://api.energidataservice.dk/dataset/Elspotprices?filter={"PriceArea":"DK1"}&sort=HourUTC ASC&limit=24`;
     const res = await fetch(url);
     const data = await res.json();
+    const hours = data.records.map(r => new Date(r.HourUTC).getHours() + ":00");
+    const pricesDKK = data.records.map(r => (r.SpotPriceEUR * 7.45) / 1000);
+    return { hours, pricesDKK };
+}
 
+// Hent aktuel pris
+async function fetchCurrentPrice() {
+    const url = "https://api.energidataservice.dk/dataset/Elspotprices?filter={\"PriceArea\":\"DK1\"}&sort=HourUTC DESC&limit=1";
+    const res = await fetch(url);
+    const data = await res.json();
     const eur = data.records[0].SpotPriceEUR;
     const dkk = (eur * 7.45) / 1000;
-
     document.getElementById("price").innerHTML = dkk.toFixed(2) + " kr/kWh";
-
-    const now = new Date().toLocaleTimeString("da-DK", { hour: "2-digit", minute: "2-digit" });
+    document.getElementById("price").style.color = getColor(dkk);
+    const now = new Date().toLocaleTimeString("da-DK",{hour:"2-digit",minute:"2-digit"});
     document.getElementById("time").innerHTML = "Opdateret: " + now;
 }
 
-fetchPrice();
-setInterval(fetchPrice, 60000);
+// Tegn graf
+async function drawChart() {
+    const { hours, pricesDKK } = await fetchDayData();
+    const colors = pricesDKK.map(p => getColor(p));
+
+    const ctx = document.getElementById('priceChart').getContext('2d');
+
+    // Dark/light mode farver
+    const isDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    const textColor = isDark ? '#fff' : '#111';
+    const gridColor = isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)';
+
+    new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: hours,
+            datasets: [{
+                label: 'Pris (kr/kWh)',
+                data: pricesDKK,
+                borderColor: '#0b63ff',
+                backgroundColor: 'rgba(11,99,255,0.1)',
+                fill: true,
+                tension: 0.3,
+                pointBackgroundColor: colors,
+                pointRadius: 5
+            }]
+        },
+        options: {
+            responsive:true,
+            plugins: {
+                legend: { labels: { color: textColor } }
+            },
+            scales: {
+                y: { beginAtZero: false, ticks: { color: textColor }, grid: { color: gridColor } },
+                x: { ticks: { color: textColor }, grid: { color: gridColor } }
+            }
+        }
+    });
+}
+
+// Opdater alt
+fetchCurrentPrice();
+drawChart();
+setInterval(fetchCurrentPrice,60000);
+
 </script>
 </body>
 </html>
