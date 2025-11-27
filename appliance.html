@@ -47,7 +47,10 @@ let chartInstance=null;
 let currentDate = new Date();
 
 function formatDate(d){ return d.toISOString().split('T')[0]; }
-function getTotalPrice(spot,hour,power){ return (spot+elAfgift+systemTarif+transport+nettTarifPerHour[hour])*moms*power; }
+
+function getTotalPrice(spot,hour,power){
+  return (spot+elAfgift+systemTarif+transport+nettTarifPerHour[hour])*moms*power;
+}
 
 async function calculate(){
   const power = parseFloat(document.getElementById("appliance").value);
@@ -56,9 +59,13 @@ async function calculate(){
   const dayStr = formatDate(currentDate);
   document.getElementById("dayLabel").textContent = dayStr;
 
-  const start = `${dayStr}T00:00:00Z`;
-  const end   = `${dayStr}T23:59:59Z`;
-  const url = `https://api.energidataservice.dk/dataset/Elspotprices?filter={"PriceArea":"DK1","HourUTC":{"gte":"${start}","lte":"${end}"}}&sort=HourUTC ASC&limit=24`;
+  // Korrekt filter med URL encoding
+  const filterObj = {
+    PriceArea: "DK1",
+    HourUTC: { gte: `${dayStr}T00:00:00Z`, lte: `${dayStr}T23:59:59Z` }
+  };
+  const filterStr = encodeURIComponent(JSON.stringify(filterObj));
+  const url = `https://api.energidataservice.dk/dataset/Elspotprices?filter=${filterStr}&sort=HourUTC ASC&limit=24`;
 
   const res = await fetch(url);
   const data = await res.json();
@@ -68,10 +75,11 @@ async function calculate(){
   const spotPrices = data.records.map(r=>(r.SpotPriceEUR*7.45)/1000);
   const totalPrices = spotPrices.map((p,i)=>getTotalPrice(p,i,power));
 
+  // Find billigste periode
   let minSum=Infinity,bestIndex=0;
   for(let i=0;i<=totalPrices.length-duration;i++){
     const sum=totalPrices.slice(i,i+duration).reduce((a,b)=>a+b,0);
-    if(sum<minSum){minSum=sum;bestIndex=i;}
+    if(sum<minSum){ minSum=sum; bestIndex=i; }
   }
 
   document.getElementById("totalCost").innerHTML = `Billigste totalpris: ${minSum.toFixed(2)} kr`;
