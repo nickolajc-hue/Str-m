@@ -19,18 +19,21 @@ button {
   background:#2196F3;
   color:#fff;
   border:none;
-  padding:5px 10px;
+  padding:5px 10px; 
   border-radius:5px;
   margin-top:10px;
 }
 </style>
 </head>
 <body>
-<h1>⚡ DK1 Strømpriser i dag</h1>
+<h1>⚡ DK1 Strømpriser</h1>
 <div id="currentPrice"></div>
-
 <button onclick="window.location.href='appliance.html'">➡ Gå til apparat-prisberegner</button>
-
+<div style="margin-top:10px;">
+  <button onclick="prevDay()">⟵ Forrige dag</button>
+  <button onclick="nextDay()">Næste dag ⟶</button>
+  <span id="dayLabel"></span>
+</div>
 <canvas id="priceChart" width="400" height="300"></canvas>
 
 <script>
@@ -38,14 +41,17 @@ const elAfgift = 0.90;
 const systemTarif = 0.092;
 const transport = 0.076;
 const moms = 1.25;
-
-// Timebaseret nettarif
 const nettTarifPerHour = [
-  0.07,0.07,0.07,0.07,0.07,0.07, // 00-05
-  0.20,0.20,0.20,0.20,0.20,0.20,0.20,0.20,0.20,0.20,0.20, // 06-16
-  0.61,0.61,0.61,0.61, // 17-20
-  0.20,0.20,0.20 // 21-23
+  0.07,0.07,0.07,0.07,0.07,0.07,
+  0.20,0.20,0.20,0.20,0.20,0.20,0.20,0.20,0.20,0.20,0.20,
+  0.61,0.61,0.61,0.61,
+  0.20,0.20,0.20
 ];
+
+let chartInstance = null;
+let currentDate = new Date();
+
+function formatDate(d){ return d.toISOString().split('T')[0]; }
 
 function getTotalPrice(spot, hour){
   const nett = nettTarifPerHour[hour];
@@ -53,20 +59,25 @@ function getTotalPrice(spot, hour){
 }
 
 async function updatePrices(){
-  const url = `https://api.energidataservice.dk/dataset/Elspotprices?filter={"PriceArea":"DK1"}&sort=HourUTC ASC&limit=24`;
+  const dayStr = formatDate(currentDate);
+  document.getElementById("dayLabel").textContent = dayStr;
+
+  const start = `${dayStr}T00:00:00Z`;
+  const end   = `${dayStr}T23:59:59Z`;
+  const url = `https://api.energidataservice.dk/dataset/Elspotprices?filter={"PriceArea":"DK1","HourUTC":{"gte":"${start}","lte":"${end}"}}&sort=HourUTC ASC&limit=24`;
+
   const res = await fetch(url);
   const data = await res.json();
+  if(!data.records.length){ alert("Ingen data for denne dag"); return; }
 
   const hoursLabels = data.records.map(r=>new Date(r.HourUTC).getHours());
   const spotPrices = data.records.map(r=>(r.SpotPriceEUR*7.45)/1000);
   const totalPrices = spotPrices.map((p,i)=>getTotalPrice(p,i));
 
-  // Lige nu
   const now = new Date();
-  const currentHour = now.getHours();
-  const currentPrice = totalPrices[currentHour].toFixed(2);
+  const currentHour = (currentDate.toDateString() === now.toDateString()) ? now.getHours() : -1;
+  const currentPrice = currentHour>=0 ? totalPrices[currentHour].toFixed(2) : "-";
 
-  // Billigste time
   const minPrice = Math.min(...totalPrices);
   const minIndex = totalPrices.indexOf(minPrice);
 
@@ -75,37 +86,27 @@ async function updatePrices(){
     <p>Billigste time: ${hoursLabels[minIndex]}:00 → ${minPrice.toFixed(2)} kr/kWh</p>
   `;
 
-  // Farvekodning
   const backgroundColors = totalPrices.map((p,i)=>{
-    if(i===minIndex) return '#4CAF50'; // billigste
-    if(i===currentHour) return '#2196F3'; // nu
-    if(p>0.5) return '#FF3B30'; // høj pris
-    return '#FFA500'; // øvrige
+    if(i===minIndex) return '#4CAF50';
+    if(i===currentHour) return '#2196F3';
+    if(p>0.5) return '#FF3B30';
+    return '#FFA500';
   });
 
   const ctx = document.getElementById('priceChart').getContext('2d');
-  if(window.chartInstance) window.chartInstance.destroy();
-  window.chartInstance = new Chart(ctx,{
+  if(chartInstance) chartInstance.destroy();
+  chartInstance = new Chart(ctx,{
     type:'bar',
-    data:{
-      labels: hoursLabels.map(h=>h+":00"),
-      datasets:[{
-        label:'DK1-pris (kr/kWh)',
-        data: totalPrices.map(p=>p.toFixed(2)),
-        backgroundColor: backgroundColors
-      }]
-    },
-    options:{
-      responsive:true,
-      plugins:{legend:{display:false}},
-      scales:{y:{beginAtZero:true}}
-    }
+    data:{ labels: hoursLabels.map(h=>h+":00"), datasets:[{ data: totalPrices.map(p=>p.toFixed(2)), backgroundColor: backgroundColors }] },
+    options:{responsive:true, plugins:{legend:{display:false}}, scales:{y:{beginAtZero:true}}}
   });
 }
 
-// Initial load + auto-opdatering hvert 5. minut
+function prevDay(){ currentDate.setDate(currentDate.getDate()-1); updatePrices(); }
+function nextDay(){ currentDate.setDate(currentDate.getDate()+1); updatePrices(); }
+
 updatePrices();
-setInterval(updatePrices, 300000);
+setInterval(updatePrices,300000);
 </script>
 </body>
 </html>
