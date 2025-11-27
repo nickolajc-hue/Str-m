@@ -16,8 +16,8 @@
 
 <script>
 // ✨ Clever Power tarif / afgift
-const netTarif = 0.55; // kr/kWh (transport)
-const elAfgift = 0.80; // kr/kWh
+const netTarif = 0.55; // kr/kWh transport
+const elAfgift = 0.80; // kr/kWh afgift
 const moms = 1.25;     // 25%
 
 const lowPrice = 1.50;  // grøn
@@ -35,43 +35,31 @@ function getTotalPrice(spot) {
     return (spot + netTarif + elAfgift) * moms;
 }
 
-// Hent 24 timers data
-async function fetchDayData() {
-    const url = `https://api.energidataservice.dk/dataset/Elspotprices?filter={"PriceArea":"DK1"}&sort=HourUTC ASC&limit=24`;
-    const res = await fetch(url);
-    const data = await res.json();
-
-    const hours = data.records.map(r => {
-        const h = new Date(r.HourUTC).getHours();
-        return h + ":00";
-    });
-    const pricesDKK = data.records.map(r => (r.SpotPriceEUR * 7.45) / 1000);
-    const totalPrices = pricesDKK.map(p => getTotalPrice(p));
-
-    return { hours, pricesDKK, totalPrices };
-}
-
 // Hent aktuel pris
 async function fetchCurrentPrice() {
     const url = "https://api.energidataservice.dk/dataset/Elspotprices?filter={\"PriceArea\":\"DK1\"}&sort=HourUTC DESC&limit=1";
     const res = await fetch(url);
     const data = await res.json();
     const eur = data.records[0].SpotPriceEUR;
-    const dkk = (eur * 7.45) / 1000;
-    const total = getTotalPrice(dkk);
+    const spotDKK = (eur * 7.45) / 1000; // spotpris kr/kWh
+    const totalDKK = getTotalPrice(spotDKK);
 
-    document.getElementById("price").innerHTML = total.toFixed(2) + " kr/kWh";
-    document.getElementById("price").style.color = getColor(total);
+    document.getElementById("price").innerHTML = totalDKK.toFixed(2) + " kr/kWh";
+    document.getElementById("price").style.color = getColor(totalDKK);
 
     const now = new Date().toLocaleTimeString("da-DK",{hour:"2-digit",minute:"2-digit"});
     document.getElementById("time").innerHTML = "Opdateret: " + now;
 }
 
-// Tegn graf
+// Tegn graf for hele dagen
 async function drawChart() {
-    const { hours, pricesDKK, totalPrices } = await fetchDayData();
+    const url = `https://api.energidataservice.dk/dataset/Elspotprices?filter={"PriceArea":"DK1"}&sort=HourUTC ASC&limit=24`;
+    const res = await fetch(url);
+    const data = await res.json();
 
-    const colorsSpot = pricesDKK.map(p => getColor(p));
+    const hours = data.records.map(r => new Date(r.HourUTC).getHours() + ":00");
+    const spotPrices = data.records.map(r => (r.SpotPriceEUR * 7.45)/1000);
+    const totalPrices = spotPrices.map(p => getTotalPrice(p));
     const colorsTotal = totalPrices.map(p => getColor(p));
 
     const ctx = document.getElementById('priceChart').getContext('2d');
@@ -84,37 +72,23 @@ async function drawChart() {
         type: 'line',
         data: {
             labels: hours,
-            datasets: [
-                {
-                    label: 'Spotpris',
-                    data: pricesDKK,
-                    borderColor: '#0b63ff',
-                    backgroundColor: 'rgba(11,99,255,0.1)',
-                    fill: true,
-                    tension: 0.3,
-                    pointBackgroundColor: colorsSpot,
-                    pointRadius: 5
-                },
-                {
-                    label: 'Samlet pris (Clever Power)',
-                    data: totalPrices,
-                    borderColor: '#ff9500',
-                    backgroundColor: 'rgba(255,149,0,0.1)',
-                    fill: true,
-                    tension: 0.3,
-                    pointBackgroundColor: colorsTotal,
-                    pointRadius: 5
-                }
-            ]
+            datasets: [{
+                label: 'Samlet pris (Clever Power)',
+                data: totalPrices,
+                borderColor: '#ff9500',
+                backgroundColor: 'rgba(255,149,0,0.1)',
+                fill: true,
+                tension: 0.3,
+                pointBackgroundColor: colorsTotal,
+                pointRadius: 5
+            }]
         },
         options: {
             responsive:true,
-            plugins: {
-                legend: { labels: { color: textColor } }
-            },
+            plugins: { legend: { labels: { color: textColor } } },
             scales: {
-                y: { beginAtZero: false, ticks: { color: textColor }, grid: { color: gridColor } },
-                x: { ticks: { color: textColor }, grid: { color: gridColor } }
+                y: { beginAtZero:false, ticks:{color:textColor}, grid:{color:gridColor} },
+                x: { ticks:{color:textColor}, grid:{color:gridColor} }
             }
         }
     });
