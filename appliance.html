@@ -13,8 +13,9 @@ body {
   color:#eee;
 }
 h1 { font-size:1.5em; }
-label, input, select { display:block; margin-top:10px; }
+label, select, input, button { display:block; margin-top:10px; }
 #applianceChart { margin-top:20px; max-width:100%; }
+button { background:#2196F3; color:#fff; border:none; padding:5px 10px; border-radius:5px; }
 </style>
 </head>
 <body>
@@ -33,10 +34,15 @@ label, input, select { display:block; margin-top:10px; }
 <label>Vælg starttidspunkt (0-23): <span id="startLabel">0</span>:00</label>
 <input type="range" id="preferredStart" min="0" max="23" value="0" step="1" oninput="document.getElementById('startLabel').textContent = this.value; calculate()">
 
+<div style="margin-top:15px;">
+  <button onclick="prevDay()">⟵ Forrige dag</button>
+  <button onclick="nextDay()">Næste dag ⟶</button>
+  <span id="dayLabel"></span>
+</div>
+
 <div id="totalCost"></div>
 <div id="preferredCost"></div>
 <div id="bestTime"></div>
-
 <canvas id="applianceChart" width="400" height="300"></canvas>
 
 <script>
@@ -54,27 +60,30 @@ const nettTarifPerHour = [
 ];
 
 let chartInstance = null;
+let currentDate = new Date(); // start med i dag
 
 function getTotalPrice(spot, hour, power){
   const nett = nettTarifPerHour[hour];
   return (spot + elAfgift + systemTarif + transport + nett) * moms * power;
 }
 
+function formatDate(d){ return d.toISOString().split('T')[0]; }
+
 async function calculate(){
   const power = parseFloat(document.getElementById("appliance").value);
   const duration = parseFloat(document.getElementById("hours").value);
   const preferred = parseInt(document.getElementById("preferredStart").value);
 
-  // Hent spotpriser
-  const url = `https://api.energidataservice.dk/dataset/Elspotprices?filter={"PriceArea":"DK1"}&sort=HourUTC ASC&limit=24`;
+  const dayStr = formatDate(currentDate);
+  document.getElementById("dayLabel").textContent = dayStr;
+
+  // Hent spotpriser for 24 timer i valgt dag
+  const url = `https://api.energidataservice.dk/dataset/Elspotprices?filter={"PriceArea":"DK1","HourUTC":"${dayStr}T00:00:00Z"}&sort=HourUTC ASC&limit=24`;
   const res = await fetch(url);
   const data = await res.json();
+  if(!data.records.length){ alert("Ingen data for denne dag"); return; }
 
-  const hoursLabels = data.records.map(r=>{
-    const d = new Date(r.HourUTC);
-    return d.getHours();
-  });
-
+  const hoursLabels = data.records.map(r=>new Date(r.HourUTC).getHours());
   const spotPrices = data.records.map(r=>(r.SpotPriceEUR*7.45)/1000);
   const totalPrices = spotPrices.map((p,i)=>getTotalPrice(p,i,power));
 
@@ -100,25 +109,22 @@ async function calculate(){
   const backgroundColors = totalPrices.map((p,i)=>{
     if(i>=bestIndex && i<bestIndex+duration) return '#4CAF50'; // billigste
     if(preferred>=0 && i>=preferred && i<preferred+duration) return '#2196F3'; // valgt
-    if(p>0.5) return '#FF3B30'; // høj pris
-    return '#FFA500'; // øvrige
+    if(p/power>0.5) return '#FF3B30'; // høj pris per kWh
+    return '#FFA500';
   });
 
   const ctx = document.getElementById('applianceChart').getContext('2d');
   if(chartInstance) chartInstance.destroy();
   chartInstance = new Chart(ctx,{
     type:'bar',
-    data:{
-      labels: hoursLabels.map(h=>h+":00"),
-      datasets:[{
-        label:'Pris pr. time (kr)',
-        data: totalPrices.map(p=>p.toFixed(2)),
-        backgroundColor: backgroundColors
-      }]
-    },
+    data:{ labels: hoursLabels.map(h=>h+":00"), datasets:[{ data: totalPrices.map(p=>p.toFixed(2)), backgroundColor: backgroundColors }] },
     options:{responsive:true,plugins:{legend:{display:false}},scales:{y:{beginAtZero:true}}}
   });
 }
+
+// Dag skifte funktioner
+function prevDay(){ currentDate.setDate(currentDate.getDate()-1); calculate(); }
+function nextDay(){ currentDate.setDate(currentDate.getDate()+1); calculate(); }
 
 // Event listeners
 document.getElementById("appliance").addEventListener("change", calculate);
@@ -127,7 +133,7 @@ document.getElementById("preferredStart").addEventListener("input", calculate);
 
 // Initial load + auto-opdatering hvert 5. minut
 calculate();
-setInterval(calculate, 300000); // 300000ms = 5min
+setInterval(calculate, 300000);
 </script>
 </body>
 </html>
