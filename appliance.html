@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Apparat-prisberegner</title>
+<link rel="stylesheet" href="styles.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+<h1>⚡ Beregn strømpris for dit apparat</h1>
+
+<label>Vælg apparat:</label>
+<select id="appliance">
+  <option value="1.5">Opvaskemaskine (1,5 kW)</option>
+  <option value="2.0">Vaskemaskine (2 kW)</option>
+  <option value="3.6">Elbil-ladning (3,6 kW)</option>
+</select>
+
+<label>Brugstid i timer:</label>
+<input type="number" id="hours" value="1" min="0.1" step="0.1">
+
+<button onclick="calculate()">Beregn</button>
+
+<div id="totalCost"></div>
+<canvas id="applianceChart" width="400" height="300" style="margin-top:30px;"></canvas>
+
+<p><a href="index.html">← Tilbage til DK1-priser</a></p>
+
+<script>
+const netTarif = 0.55;
+const elAfgift = 0.80;
+const moms = 1.25;
+
+function getTotalPrice(spot){ return (spot+netTarif+elAfgift)*moms; }
+
+async function calculate(){
+    const power=parseFloat(document.getElementById("appliance").value);
+    const hours=parseFloat(document.getElementById("hours").value);
+
+    const url=`https://api.energidataservice.dk/dataset/Elspotprices?filter={"PriceArea":"DK1"}&sort=HourUTC ASC&limit=24`;
+    const res=await fetch(url);
+    const data=await res.json();
+
+    const hoursLabels=data.records.map(r=>new Date(r.HourUTC).getHours()+":00");
+    const spotPrices=data.records.map(r=>(r.SpotPriceEUR*7.45)/1000);
+    const totalPrices=spotPrices.map(p=>getTotalPrice(p));
+    const costPerHour=totalPrices.map(p=>(p*power).toFixed(2));
+    const totalCost=costPerHour.reduce((a,b)=>a+parseFloat(b),0).toFixed(2);
+
+    document.getElementById("totalCost").innerHTML=`Total pris for ${hours} timer: ${totalCost} kr`;
+
+    const ctx=document.getElementById('applianceChart').getContext('2d');
+    new Chart(ctx,{
+        type:'bar',
+        data:{labels:hoursLabels,datasets:[{
+            label:'Pris pr. time (kr)',
+            data:costPerHour,
+            backgroundColor:costPerHour.map(p=>p<3?'#4CAF50':p<5?'#FFA500':'#FF3B30')
+        }]},
+        options:{responsive:true,plugins:{legend:{display:false}}}
+    });
+}
+</script>
+</body>
+</html>
