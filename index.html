@@ -1,29 +1,123 @@
  <!DOCTYPE html>
 <html lang="da">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Elpriser – Oversigt</title>
-<link rel="stylesheet" href="style.css">
-<script defer src="script.js"></script>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Elpriser DK1</title>
+
+<style>
+body {
+  background: #111;
+  color: white;
+  font-family: Arial;
+  margin: 20px;
+}
+
+h2 { text-align: center; }
+
+#chart {
+  width: 100%;
+  height: 280px;
+  border: 1px solid #444;
+  margin-top: 20px;
+}
+
+.btn {
+  display: block;
+  padding: 15px;
+  background: #1e88e5;
+  color: white;
+  text-align: center;
+  text-decoration: none;
+  border-radius: 10px;
+  margin-top: 20px;
+  font-size: 18px;
+}
+
+.time {
+  padding: 8px;
+  margin: 3px 0;
+  border-radius: 6px;
+  font-size: 16px;
+}
+</style>
 </head>
 
 <body>
-<header>
-    <h1>Elpriser i dag</h1>
-</header>
+<h2>Elpriser i dag – DK1</h2>
+<div id="date"></div>
+<div id="list"></div>
 
-<div class="date-nav">
-    <button id="prevDay">← I går</button>
-    <span id="currentDate"></span>
-    <button id="nextDay">I morgen →</button>
-</div>
+<a href="appliances.html" class="btn">⚡ Apparater</a>
 
-<div id="priceList"></div>
+<script>
+// --- Dato formatter ---
+function formatDate(d){
+  const y = d.getFullYear();
+  const m = String(d.getMonth()+1).padStart(2,"0");
+  const dd = String(d.getDate()).padStart(2,"0");
+  return `${y}-${m}-${dd}`;
+}
 
-<div class="nav-container">
-    <a href="appliances.html" class="nav-button">⚡ Apparater</a>
-</div>
+// --- elpris + afgifter ---
+async function loadPrices(){
+  const today = new Date();
+  const dateStr = formatDate(today);
 
+  document.getElementById("date").innerText = dateStr;
+
+  const filter = encodeURIComponent(JSON.stringify({
+    PriceArea: "DK1",
+    HourUTC: {
+      gte: `${dateStr}T00:00:00Z`,
+      lte: `${dateStr}T23:59:59Z`
+    }
+  }));
+
+  const url =
+    `https://api.energidataservice.dk/dataset/Elspotprices?filter=${filter}&limit=24&sort=HourUTC%20ASC`;
+
+  const r = await fetch(url);
+  const data = await r.json();
+
+  if (!data.records || data.records.length === 0){
+    document.getElementById("list").innerHTML = "<p>Ingen data for denne dag.</p>";
+    return;
+  }
+
+  const list = document.getElementById("list");
+  list.innerHTML = "";
+
+  data.records.forEach(rec => {
+    let spot = rec.SpotPriceDKK / 1000; // omregnet til kr/kWh
+
+    // Afgifter
+    const afgift = 0.90;
+    const systemtariff = 0.092;
+    const transport = 0.076;
+
+    // Nettarif tidsbestemt
+    const h = new Date(rec.HourUTC).getHours();
+    let nettarif = 0.20;
+    if (h >= 0 && h <= 5) nettarif = 0.07;
+    if (h >= 17 && h <= 20) nettarif = 0.61;
+
+    let total = spot + afgift + systemtariff + transport + nettarif;
+    total = total * 1.25; // moms
+
+    let color = "#2e7d32"; // grøn
+    if (total > 2.5) color = "#ff3d00";
+    else if (total > 2.0) color = "#ff9800";
+
+    const div = document.createElement("div");
+    div.className = "time";
+    div.style.background = color;
+    div.innerText = `${h}:00 – ${total.toFixed(2)} kr/kWh`;
+    list.appendChild(div);
+  });
+}
+
+loadPrices();
+</script>
 </body>
 </html>
