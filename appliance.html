@@ -1,36 +1,127 @@
 <!DOCTYPE html>
 <html lang="da">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>Apparater</title>
-<link rel="stylesheet" href="style.css">
-<script defer src="script.js"></script>
+
+<style>
+body {
+  background: #111;
+  color: white;
+  font-family: Arial;
+  margin: 20px;
+}
+
+h2 { text-align: center; }
+
+.btn {
+  display: block;
+  padding: 15px;
+  background: #1e88e5;
+  color: white;
+  text-align: center;
+  text-decoration: none;
+  border-radius: 10px;
+  margin-top: 20px;
+  font-size: 18px;
+}
+
+.time {
+  padding: 8px;
+  margin: 3px 0;
+  border-radius: 6px;
+  font-size: 16px;
+}
+</style>
 </head>
 
 <body>
+<a href="index.html" class="btn">← Tilbage</a>
 
-<header>
-    <h1>Apparat beregner</h1>
-</header>
+<h2>Hvornår er det billigst?</h2>
 
-<div class="nav-container">
-    <a href="index.html" class="nav-button">← Tilbage</a>
-</div>
+<label>Forbrugstid i timer:</label>
+<input type="number" id="hours" value="2" min="1" max="6" style="width:80px;padding:10px;font-size:18px">
 
-<div class="input-box">
-    <label for="duration">Hvor mange timer?</label>
-    <input id="duration" type="number" value="2" min="1" max="12">
-</div>
+<button class="btn" onclick="calcBest()">Beregn billigste start</button>
 
-<div class="input-box">
-    <label for="startTime">Vælg evt. starttidspunkt:</label>
-    <input id="startTime" type="number" placeholder="Valgfrit" min="0" max="23">
-</div>
+<div id="result" style="margin-top:20px;"></div>
 
-<button id="calcButton" class="big-button">Beregn billigste tidspunkt</button>
+<script>
+// --- Dato format ---
+function formatDate(d){
+  const y = d.getFullYear();
+  const m = String(d.getMonth()+1).padStart(2,"0");
+  const dd = String(d.getDate()).padStart(2,"0");
+  return `${y}-${m}-${dd}`;
+}
 
-<div id="resultBox"></div>
+// --- hent priser ---
+async function getDayPrices(){
+  const date = new Date();
+  const dateStr = formatDate(date);
 
+  const filter = encodeURIComponent(JSON.stringify({
+    PriceArea:"DK1",
+    HourUTC:{gte:`${dateStr}T00:00:00Z`,lte:`${dateStr}T23:59:59Z`}
+  }));
+
+  const url =
+    `https://api.energidataservice.dk/dataset/Elspotprices?filter=${filter}&limit=24&sort=HourUTC%20ASC`;
+
+  const r = await fetch(url);
+  const data = await r.json();
+
+  if(!data.records || data.records.length === 0) return null;
+
+  return data.records.map(r => {
+    let spot = r.SpotPriceDKK / 1000;
+
+    const afgift = 0.90;
+    const systemtariff = 0.092;
+    const transport = 0.076;
+
+    let h = new Date(r.HourUTC).getHours();
+    let nettarif = 0.20;
+    if (h >= 0 && h <= 5) nettarif = 0.07;
+    if (h >= 17 && h <= 20) nettarif = 0.61;
+
+    let total = spot + afgift + systemtariff + transport + nettarif;
+    total = total * 1.25;
+
+    return { hour: h, price: total };
+  });
+}
+
+// --- beregn billigste start ---
+async function calcBest(){
+  const H = parseInt(document.getElementById("hours").value);
+  const prices = await getDayPrices();
+
+  if(!prices){
+    document.getElementById("result").innerHTML = "<p>Ingen data</p>";
+    return;
+  }
+
+  let bestStart = null;
+  let bestSum = Infinity;
+
+  for(let i=0;i<=24-H;i++){
+    let sum = 0;
+    for(let j=0;j<H;j++){
+      sum += prices[i+j].price;
+    }
+    if(sum < bestSum){
+      bestSum = sum;
+      bestStart = i;
+    }
+  }
+
+  document.getElementById("result").innerHTML =
+    `<h3>Billigste start: kl. ${bestStart}:00</h3>
+     <p>Gennemsnitspris: ${(bestSum/H).toFixed(2)} kr/kWh</p>`;
+}
+</script>
 </body>
 </html>
