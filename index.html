@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Elpriser DK1</title>
+<title>Elpriser DK1 – Spotpris</title>
 
 <style>
 body {
@@ -13,13 +13,15 @@ body {
   margin: 20px;
 }
 
-h2 { text-align: center; }
+h2 {
+  text-align: center;
+}
 
-#chart {
-  width: 100%;
-  height: 280px;
-  border: 1px solid #444;
-  margin-top: 20px;
+.time {
+  padding: 10px;
+  margin: 4px 0;
+  border-radius: 6px;
+  font-size: 17px;
 }
 
 .btn {
@@ -33,25 +35,18 @@ h2 { text-align: center; }
   margin-top: 20px;
   font-size: 18px;
 }
-
-.time {
-  padding: 8px;
-  margin: 3px 0;
-  border-radius: 6px;
-  font-size: 16px;
-}
 </style>
 </head>
 
 <body>
-<h2>Elpriser i dag – DK1</h2>
+<h2>Spotpris i dag – DK1</h2>
 <div id="date"></div>
 <div id="list"></div>
 
 <a href="appliances.html" class="btn">⚡ Apparater</a>
 
 <script>
-// --- Dato formatter ---
+// ---------- Dato format ----------
 function formatDate(d){
   const y = d.getFullYear();
   const m = String(d.getMonth()+1).padStart(2,"0");
@@ -59,11 +54,10 @@ function formatDate(d){
   return `${y}-${m}-${dd}`;
 }
 
-// --- elpris + afgifter ---
+// ---------- Hent spotpriser ----------
 async function loadPrices(){
-  const today = new Date();
-  const dateStr = formatDate(today);
-
+  const now = new Date();
+  const dateStr = formatDate(now);
   document.getElementById("date").innerText = dateStr;
 
   const filter = encodeURIComponent(JSON.stringify({
@@ -74,7 +68,7 @@ async function loadPrices(){
     }
   }));
 
-  const url =
+  const url = 
     `https://api.energidataservice.dk/dataset/Elspotprices?filter=${filter}&limit=24&sort=HourUTC%20ASC`;
 
   const r = await fetch(url);
@@ -85,34 +79,28 @@ async function loadPrices(){
     return;
   }
 
+  const currentHour = now.getHours(); // Til at lave blå farve
   const list = document.getElementById("list");
   list.innerHTML = "";
 
   data.records.forEach(rec => {
-    let spot = rec.SpotPriceDKK / 1000; // omregnet til kr/kWh
+    const hour = new Date(rec.HourUTC).getHours();
+    const price = rec.SpotPriceDKK / 1000; // Spotpris i kr/kWh
 
-    // Afgifter
-    const afgift = 0.90;
-    const systemtariff = 0.092;
-    const transport = 0.076;
+    // ----- Farver -----
+    let color = "#2e7d32";   // grøn (lav)
+    if (price > 1.5) color = "#ff9800";   // orange (middel)
+    if (price > 2.0) color = "#ff3d00";   // rød (høj)
 
-    // Nettarif tidsbestemt
-    const h = new Date(rec.HourUTC).getHours();
-    let nettarif = 0.20;
-    if (h >= 0 && h <= 5) nettarif = 0.07;
-    if (h >= 17 && h <= 20) nettarif = 0.61;
+    // Aktuel time = BLÅ
+    if (hour === currentHour) color = "#2962ff";
 
-    let total = spot + afgift + systemtariff + transport + nettarif;
-    total = total * 1.25; // moms
-
-    let color = "#2e7d32"; // grøn
-    if (total > 2.5) color = "#ff3d00";
-    else if (total > 2.0) color = "#ff9800";
-
+    // Lav visuel boks
     const div = document.createElement("div");
     div.className = "time";
     div.style.background = color;
-    div.innerText = `${h}:00 – ${total.toFixed(2)} kr/kWh`;
+    div.innerText = `${hour.toString().padStart(2, "0")}:00 – ${price.toFixed(2)} kr/kWh`;
+
     list.appendChild(div);
   });
 }
