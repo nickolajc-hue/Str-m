@@ -2,121 +2,35 @@
 <html lang="da">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>Apparat-prisberegner</title>
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<style>
-body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; margin:10px; background-color:#111; color:#eee; }
-h1 { font-size:1.5em; }
-label, select, input, button { display:block; margin-top:10px; }
-#applianceChart { margin-top:20px; max-width:100%; }
-button { background:#2196F3; color:#fff; border:none; padding:5px 10px; border-radius:5px; }
-</style>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Apparater</title>
+<link rel="stylesheet" href="style.css">
+<script defer src="script.js"></script>
 </head>
+
 <body>
-<h1>⚡ Planlæg billigste tidspunkt for dit apparat</h1>
 
-<label>Vælg apparat:</label>
-<select id="appliance">
-  <option value="1.5">Opvaskemaskine (1,5 kW)</option>
-  <option value="2.0">Vaskemaskine (2 kW)</option>
-  <option value="3.6">Elbil-ladning (3,6 kW)</option>
-</select>
+<header>
+    <h1>Apparat beregner</h1>
+</header>
 
-<label>Brugstid i timer:</label>
-<input type="number" id="hours" value="1" min="0.1" step="0.1">
-
-<label>Vælg starttidspunkt (0-23): <span id="startLabel">0</span>:00</label>
-<input type="range" id="preferredStart" min="0" max="23" value="0" step="1" oninput="document.getElementById('startLabel').textContent=this.value; calculate()">
-
-<div style="margin-top:10px;">
-  <button onclick="prevDay()">⟵ Forrige dag</button>
-  <button onclick="nextDay()">Næste dag ⟶</button>
-  <span id="dayLabel"></span>
+<div class="nav-container">
+    <a href="index.html" class="nav-button">← Tilbage</a>
 </div>
 
-<div id="totalCost"></div>
-<div id="preferredCost"></div>
-<div id="bestTime"></div>
-<canvas id="applianceChart" width="400" height="300"></canvas>
+<div class="input-box">
+    <label for="duration">Hvor mange timer?</label>
+    <input id="duration" type="number" value="2" min="1" max="12">
+</div>
 
-<script>
-const elAfgift = 0.90, systemTarif = 0.092, transport = 0.076, moms = 1.25;
-const nettTarifPerHour = [0.07,0.07,0.07,0.07,0.07,0.07,0.20,0.20,0.20,0.20,0.20,0.20,0.20,0.20,0.20,0.20,0.20,0.61,0.61,0.61,0.61,0.20,0.20,0.20];
-let chartInstance=null;
-let currentDate = new Date();
+<div class="input-box">
+    <label for="startTime">Vælg evt. starttidspunkt:</label>
+    <input id="startTime" type="number" placeholder="Valgfrit" min="0" max="23">
+</div>
 
-function formatDate(d){ return d.toISOString().split('T')[0]; }
+<button id="calcButton" class="big-button">Beregn billigste tidspunkt</button>
 
-function getTotalPrice(spot,hour,power){
-  return (spot+elAfgift+systemTarif+transport+nettTarifPerHour[hour])*moms*power;
-}
+<div id="resultBox"></div>
 
-async function calculate(){
-  const power = parseFloat(document.getElementById("appliance").value);
-  const duration = parseFloat(document.getElementById("hours").value);
-  const preferred = parseInt(document.getElementById("preferredStart").value);
-  const dayStr = formatDate(currentDate);
-  document.getElementById("dayLabel").textContent = dayStr;
-
-  // Korrekt filter med URL encoding
-  const filterObj = {
-    PriceArea: "DK1",
-    HourUTC: { gte: `${dayStr}T00:00:00Z`, lte: `${dayStr}T23:59:59Z` }
-  };
-  const filterStr = encodeURIComponent(JSON.stringify(filterObj));
-  const url = `https://api.energidataservice.dk/dataset/Elspotprices?filter=${filterStr}&sort=HourUTC ASC&limit=24`;
-
-  const res = await fetch(url);
-  const data = await res.json();
-  if(!data.records.length){ alert("Ingen data for denne dag"); return; }
-
-  const hoursLabels = data.records.map(r=>new Date(r.HourUTC).getHours());
-  const spotPrices = data.records.map(r=>(r.SpotPriceEUR*7.45)/1000);
-  const totalPrices = spotPrices.map((p,i)=>getTotalPrice(p,i,power));
-
-  // Find billigste periode
-  let minSum=Infinity,bestIndex=0;
-  for(let i=0;i<=totalPrices.length-duration;i++){
-    const sum=totalPrices.slice(i,i+duration).reduce((a,b)=>a+b,0);
-    if(sum<minSum){ minSum=sum; bestIndex=i; }
-  }
-
-  document.getElementById("totalCost").innerHTML = `Billigste totalpris: ${minSum.toFixed(2)} kr`;
-  document.getElementById("bestTime").innerHTML = `Anbefalet starttidspunkt: ${hoursLabels[bestIndex]}:00 i ${duration} timer`;
-
-  let preferredSumText='';
-  if(preferred>=0 && preferred+duration<=24){
-    const preferredSum = totalPrices.slice(preferred,preferred+duration).reduce((a,b)=>a+b,0);
-    preferredSumText = `Pris hvis du starter kl ${hoursLabels[preferred]}:00 → ${preferredSum.toFixed(2)} kr`;
-  }
-  document.getElementById("preferredCost").innerHTML = preferredSumText;
-
-  const backgroundColors = totalPrices.map((p,i)=>{
-    if(i>=bestIndex && i<bestIndex+duration) return '#4CAF50';
-    if(preferred>=0 && i>=preferred && i<preferred+duration) return '#2196F3';
-    if(p/power>0.5) return '#FF3B30';
-    return '#FFA500';
-  });
-
-  const ctx = document.getElementById('applianceChart').getContext('2d');
-  if(chartInstance) chartInstance.destroy();
-  chartInstance = new Chart(ctx,{
-    type:'bar',
-    data:{ labels: hoursLabels.map(h=>h+":00"), datasets:[{ data: totalPrices.map(p=>p.toFixed(2)), backgroundColor: backgroundColors }] },
-    options:{responsive:true,plugins:{legend:{display:false}},scales:{y:{beginAtZero:true}}}
-  });
-}
-
-function prevDay(){ currentDate.setDate(currentDate.getDate()-1); calculate(); }
-function nextDay(){ currentDate.setDate(currentDate.getDate()+1); calculate(); }
-
-document.getElementById("appliance").addEventListener("change", calculate);
-document.getElementById("hours").addEventListener("change", calculate);
-document.getElementById("preferredStart").addEventListener("input", calculate);
-
-calculate();
-setInterval(calculate,300000);
-</script>
 </body>
 </html>
