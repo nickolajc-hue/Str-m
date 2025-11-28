@@ -1,112 +1,29 @@
-<!DOCTYPE html>
+ <!DOCTYPE html>
 <html lang="da">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>DK1 Strømpriser</title>
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<style>
-body {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  margin: 10px;
-  background-color: #111;
-  color: #eee;
-}
-h1 { font-size: 1.5em; }
-#currentPrice { margin-bottom: 15px; }
-canvas { max-width: 100%; }
-button {
-  background:#2196F3;
-  color:#fff;
-  border:none;
-  padding:5px 10px; 
-  border-radius:5px;
-  margin-top:10px;
-}
-</style>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Elpriser – Oversigt</title>
+<link rel="stylesheet" href="style.css">
+<script defer src="script.js"></script>
 </head>
+
 <body>
-<h1>⚡ DK1 Strømpriser</h1>
-<div id="currentPrice"></div>
-<button onclick="window.location.href='appliance.html'">➡ Gå til apparat-prisberegner</button>
-<div style="margin-top:10px;">
-  <button onclick="prevDay()">⟵ Forrige dag</button>
-  <button onclick="nextDay()">Næste dag ⟶</button>
-  <span id="dayLabel"></span>
+<header>
+    <h1>Elpriser i dag</h1>
+</header>
+
+<div class="date-nav">
+    <button id="prevDay">← I går</button>
+    <span id="currentDate"></span>
+    <button id="nextDay">I morgen →</button>
 </div>
-<canvas id="priceChart" width="400" height="300"></canvas>
 
-<script>
-const elAfgift = 0.90;
-const systemTarif = 0.092;
-const transport = 0.076;
-const moms = 1.25;
-const nettTarifPerHour = [
-  0.07,0.07,0.07,0.07,0.07,0.07,
-  0.20,0.20,0.20,0.20,0.20,0.20,0.20,0.20,0.20,0.20,0.20,
-  0.61,0.61,0.61,0.61,
-  0.20,0.20,0.20
-];
+<div id="priceList"></div>
 
-let chartInstance = null;
-let currentDate = new Date();
+<div class="nav-container">
+    <a href="appliances.html" class="nav-button">⚡ Apparater</a>
+</div>
 
-function formatDate(d){ return d.toISOString().split('T')[0]; }
-
-function getTotalPrice(spot, hour){
-  const nett = nettTarifPerHour[hour];
-  return (spot + elAfgift + systemTarif + transport + nett) * moms;
-}
-
-async function updatePrices(){
-  const dayStr = formatDate(currentDate);
-  document.getElementById("dayLabel").textContent = dayStr;
-
-  const start = `${dayStr}T00:00:00Z`;
-  const end   = `${dayStr}T23:59:59Z`;
-  const url = `https://api.energidataservice.dk/dataset/Elspotprices?filter={"PriceArea":"DK1","HourUTC":{"gte":"${start}","lte":"${end}"}}&sort=HourUTC ASC&limit=24`;
-
-  const res = await fetch(url);
-  const data = await res.json();
-  if(!data.records.length){ alert("Ingen data for denne dag"); return; }
-
-  const hoursLabels = data.records.map(r=>new Date(r.HourUTC).getHours());
-  const spotPrices = data.records.map(r=>(r.SpotPriceEUR*7.45)/1000);
-  const totalPrices = spotPrices.map((p,i)=>getTotalPrice(p,i));
-
-  const now = new Date();
-  const currentHour = (currentDate.toDateString() === now.toDateString()) ? now.getHours() : -1;
-  const currentPrice = currentHour>=0 ? totalPrices[currentHour].toFixed(2) : "-";
-
-  const minPrice = Math.min(...totalPrices);
-  const minIndex = totalPrices.indexOf(minPrice);
-
-  document.getElementById("currentPrice").innerHTML = `
-    <h2>Prisen lige nu: ${currentPrice} kr/kWh</h2>
-    <p>Billigste time: ${hoursLabels[minIndex]}:00 → ${minPrice.toFixed(2)} kr/kWh</p>
-  `;
-
-  const backgroundColors = totalPrices.map((p,i)=>{
-    if(i===minIndex) return '#4CAF50';
-    if(i===currentHour) return '#2196F3';
-    if(p>0.5) return '#FF3B30';
-    return '#FFA500';
-  });
-
-  const ctx = document.getElementById('priceChart').getContext('2d');
-  if(chartInstance) chartInstance.destroy();
-  chartInstance = new Chart(ctx,{
-    type:'bar',
-    data:{ labels: hoursLabels.map(h=>h+":00"), datasets:[{ data: totalPrices.map(p=>p.toFixed(2)), backgroundColor: backgroundColors }] },
-    options:{responsive:true, plugins:{legend:{display:false}}, scales:{y:{beginAtZero:true}}}
-  });
-}
-
-function prevDay(){ currentDate.setDate(currentDate.getDate()-1); updatePrices(); }
-function nextDay(){ currentDate.setDate(currentDate.getDate()+1); updatePrices(); }
-
-updatePrices();
-setInterval(updatePrices,300000);
-</script>
 </body>
 </html>
