@@ -1,111 +1,91 @@
- <!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="da">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Elpriser DK1 – Spotpris</title>
+  <meta charset="UTF-8">
+  <title>Elpris DK1</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body {
+      background: #000;
+      color: white;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      margin: 0;
+    }
 
-<style>
-body {
-  background: #111;
-  color: white;
-  font-family: Arial;
-  margin: 20px;
-}
+    .box {
+      text-align: center;
+    }
 
-h2 {
-  text-align: center;
-}
+    .price {
+      font-size: 64px;
+      font-weight: bold;
+    }
 
-.time {
-  padding: 10px;
-  margin: 4px 0;
-  border-radius: 6px;
-  font-size: 17px;
-}
+    .unit {
+      font-size: 22px;
+      margin-top: 10px;
+      opacity: 0.8;
+    }
 
-.btn {
-  display: block;
-  padding: 15px;
-  background: #1e88e5;
-  color: white;
-  text-align: center;
-  text-decoration: none;
-  border-radius: 10px;
-  margin-top: 20px;
-  font-size: 18px;
-}
-</style>
+    .time {
+      margin-top: 20px;
+      font-size: 16px;
+      opacity: 0.5;
+    }
+  </style>
 </head>
-
 <body>
-<h2>Spotpris i dag – DK1</h2>
-<div id="date"></div>
-<div id="list"></div>
 
-<a href="appliances.html" class="btn">⚡ Apparater</a>
+<div class="box">
+  <div class="price" id="price">...</div>
+  <div class="unit">kr / kWh</div>
+  <div class="time" id="time">Henter pris...</div>
+</div>
 
 <script>
-// ---------- Dato format ----------
-function formatDate(d){
-  const y = d.getFullYear();
-  const m = String(d.getMonth()+1).padStart(2,"0");
-  const dd = String(d.getDate()).padStart(2,"0");
-  return `${y}-${m}-${dd}`;
-}
+async function loadPrice() {
+  try {
+    const now = new Date();
 
-// ---------- Hent spotpriser ----------
-async function loadPrices(){
-  const now = new Date();
-  const dateStr = formatDate(now);
-  document.getElementById("date").innerText = dateStr;
+    const date = now.toISOString().split("T")[0];
 
-  const filter = encodeURIComponent(JSON.stringify({
-    PriceArea: "DK1",
-    HourUTC: {
-      gte: `${dateStr}T00:00:00Z`,
-      lte: `${dateStr}T23:59:59Z`
-    }
-  }));
+    const filter = encodeURIComponent(JSON.stringify({
+      PriceArea: "DK1",
+      HourUTC: {
+        gte: date + "T00:00:00Z",
+        lte: date + "T23:59:59Z"
+      }
+    }));
 
-  const url = 
-    `https://api.energidataservice.dk/dataset/Elspotprices?filter=${filter}&limit=24&sort=HourUTC%20ASC`;
+    const url = "https://api.energidataservice.dk/dataset/Elspotprices" +
+      "?filter=" + filter +
+      "&sort=HourUTC ASC&limit=24";
 
-  const r = await fetch(url);
-  const data = await r.json();
+    const res = await fetch(url);
+    const data = await res.json();
 
-  if (!data.records || data.records.length === 0){
-    document.getElementById("list").innerHTML = "<p>Ingen data for denne dag.</p>";
-    return;
+    const hour = now.getUTCHours();
+    const rec = data.records[hour];
+
+    const price = rec.SpotPriceDKK / 1000;
+
+    document.getElementById("price").innerText = price.toFixed(2);
+    document.getElementById("time").innerText =
+      "Gælder kl. " + String(hour).padStart(2, "0") + ":00";
+
+  } catch {
+    document.getElementById("price").innerText = "Fejl";
+    document.getElementById("time").innerText = "Kunne ikke hente data";
   }
-
-  const currentHour = now.getHours(); // Til at lave blå farve
-  const list = document.getElementById("list");
-  list.innerHTML = "";
-
-  data.records.forEach(rec => {
-    const hour = new Date(rec.HourUTC).getHours();
-    const price = rec.SpotPriceDKK / 1000; // Spotpris i kr/kWh
-
-    // ----- Farver -----
-    let color = "#2e7d32";   // grøn (lav)
-    if (price > 1.5) color = "#ff9800";   // orange (middel)
-    if (price > 2.0) color = "#ff3d00";   // rød (høj)
-
-    // Aktuel time = BLÅ
-    if (hour === currentHour) color = "#2962ff";
-
-    // Lav visuel boks
-    const div = document.createElement("div");
-    div.className = "time";
-    div.style.background = color;
-    div.innerText = `${hour.toString().padStart(2, "0")}:00 – ${price.toFixed(2)} kr/kWh`;
-
-    list.appendChild(div);
-  });
 }
 
-loadPrices();
+loadPrice();
+setInterval(loadPrice, 60000);
 </script>
+
 </body>
 </html>
