@@ -9,15 +9,13 @@
       background: #000;
       color: white;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      height: 100vh;
       margin: 0;
+      padding: 20px;
     }
 
-    .box {
+    .center {
       text-align: center;
+      margin-top: 40px;
     }
 
     .price {
@@ -26,31 +24,70 @@
     }
 
     .unit {
-      font-size: 22px;
-      margin-top: 10px;
-      opacity: 0.8;
+      font-size: 20px;
+      opacity: 0.7;
     }
 
-    .time {
-      margin-top: 20px;
-      font-size: 16px;
+    .time-now {
+      font-size: 14px;
+      margin-top: 10px;
       opacity: 0.5;
+    }
+
+    .btn {
+      margin-top: 40px;
+      background: #1e88e5;
+      color: white;
+      border: none;
+      font-size: 18px;
+      padding: 15px;
+      width: 100%;
+      border-radius: 12px;
+    }
+
+    .list {
+      margin-top: 20px;
+      display: none;
+    }
+
+    .row {
+      padding: 12px;
+      margin-bottom: 8px;
+      border-radius: 10px;
+      background: #111;
+      display: flex;
+      justify-content: space-between;
+      font-size: 18px;
+    }
+
+    .now {
+      background: #2962ff !important;
     }
   </style>
 </head>
 <body>
 
-<div class="box">
+<div class="center">
   <div class="price" id="price">...</div>
   <div class="unit">kr / kWh</div>
-  <div class="time" id="time">Henter pris...</div>
+  <div class="time-now" id="time">Henter pris...</div>
+
+  <button class="btn" onclick="toggleDayPrices()">Se resten af dagens priser</button>
 </div>
 
+<div class="list" id="dayList"></div>
+
 <script>
-async function loadPrice() {
+let visible = false;
+
+function toggleDayPrices() {
+  visible = !visible;
+  document.getElementById("dayList").style.display = visible ? "block" : "none";
+}
+
+async function loadPrices() {
   try {
     const now = new Date();
-
     const date = now.toISOString().split("T")[0];
 
     const filter = encodeURIComponent(JSON.stringify({
@@ -61,30 +98,48 @@ async function loadPrice() {
       }
     }));
 
-    const url = "https://api.energidataservice.dk/dataset/Elspotprices" +
+    const url =
+      "https://api.energidataservice.dk/dataset/Elspotprices" +
       "?filter=" + filter +
       "&sort=HourUTC ASC&limit=24";
 
     const res = await fetch(url);
     const data = await res.json();
 
-    const hour = now.getUTCHours();
-    const rec = data.records[hour];
+    const hourNow = new Date().getUTCHours();
 
-    const price = rec.SpotPriceDKK / 1000;
+    const current = data.records[hourNow];
+    const currentPrice = current.SpotPriceDKK / 1000;
 
-    document.getElementById("price").innerText = price.toFixed(2);
+    document.getElementById("price").innerText = currentPrice.toFixed(2);
     document.getElementById("time").innerText =
-      "Gælder kl. " + String(hour).padStart(2, "0") + ":00";
+      "Gælder kl. " + String(hourNow).padStart(2, "0") + ":00";
 
-  } catch {
+    const list = document.getElementById("dayList");
+    list.innerHTML = "";
+
+    data.records.forEach((rec, index) => {
+      const hour = new Date(rec.HourUTC).getUTCHours();
+      const price = rec.SpotPriceDKK / 1000;
+
+      const row = document.createElement("div");
+      row.className = "row" + (hour === hourNow ? " now" : "");
+      row.innerHTML = `
+        <span>${String(hour).padStart(2, "0")}:00</span>
+        <span>${price.toFixed(2)} kr</span>
+      `;
+
+      list.appendChild(row);
+    });
+
+  } catch (e) {
     document.getElementById("price").innerText = "Fejl";
-    document.getElementById("time").innerText = "Kunne ikke hente data";
   }
 }
 
-loadPrice();
-setInterval(loadPrice, 60000);
+// load og opdater hvert minut
+loadPrices();
+setInterval(loadPrices, 60000);
 </script>
 
 </body>
