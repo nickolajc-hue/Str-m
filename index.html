@@ -1,9 +1,9 @@
 <!DOCTYPE html>
 <html lang="da">
 <head>
-  <meta charset="UTF-8">
-  <title>Elpris DK1</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Spotpris DK1</title>
   <style>
     body {
       background: #000;
@@ -12,135 +12,109 @@
       margin: 0;
       padding: 20px;
     }
-
     .center {
       text-align: center;
       margin-top: 40px;
     }
-
     .price {
-      font-size: 64px;
+      font-size: 56px;
       font-weight: bold;
     }
-
     .unit {
       font-size: 20px;
       opacity: 0.7;
     }
-
-    .time-now {
-      font-size: 14px;
+    .time {
       margin-top: 10px;
+      font-size: 16px;
       opacity: 0.5;
     }
-
-    .btn {
-      margin-top: 40px;
-      background: #1e88e5;
-      color: white;
-      border: none;
-      font-size: 18px;
-      padding: 15px;
-      width: 100%;
-      border-radius: 12px;
-    }
-
     .list {
-      margin-top: 20px;
-      display: none;
+      margin-top: 30px;
     }
-
     .row {
-      padding: 12px;
-      margin-bottom: 8px;
-      border-radius: 10px;
-      background: #111;
       display: flex;
       justify-content: space-between;
+      padding: 8px 12px;
+      border-bottom: 1px solid #222;
       font-size: 18px;
     }
-
     .now {
-      background: #2962ff !important;
+      background: #2962ff;
     }
   </style>
 </head>
 <body>
+  <div class="center">
+    <div class="price" id="price">–</div>
+    <div class="unit">kr / kWh</div>
+    <div class="time" id="time">Henter pris…</div>
 
-<div class="center">
-  <div class="price" id="price">...</div>
-  <div class="unit">kr / kWh</div>
-  <div class="time-now" id="time">Henter pris...</div>
+    <button onclick="toggleList()" style="margin-top:20px; padding:12px 20px; font-size:18px;">
+      Se dagens priser
+    </button>
+  </div>
 
-  <button class="btn" onclick="toggleDayPrices()">Se resten af dagens priser</button>
-</div>
+  <div class="list" id="dayList" style="display: none;"></div>
 
-<div class="list" id="dayList"></div>
+  <script>
+    function toggleList(){
+      const el = document.getElementById("dayList");
+      el.style.display = (el.style.display === "none") ? "block" : "none";
+    }
 
-<script>
-let visible = false;
+    async function loadPrices(){
+      const today = new Date();
+      const date = today.toISOString().split("T")[0];
 
-function toggleDayPrices() {
-  visible = !visible;
-  document.getElementById("dayList").style.display = visible ? "block" : "none";
-}
+      const filter = encodeURIComponent(JSON.stringify({
+        PriceArea: "DK1",
+        HourUTC: {
+          gte: date + "T00:00:00Z",
+          lte: date + "T23:59:59Z"
+        }
+      }));
 
-async function loadPrices() {
-  try {
-    const now = new Date();
-    const date = now.toISOString().split("T")[0];
+      const url = `https://api.energidataservice.dk/dataset/Elspotprices?filter=${filter}&sort=HourUTC ASC&limit=24`;
 
-    const filter = encodeURIComponent(JSON.stringify({
-      PriceArea: "DK1",
-      HourUTC: {
-        gte: date + "T00:00:00Z",
-        lte: date + "T23:59:59Z"
+      try {
+        const res = await fetch(url);
+        const data = await res.json();
+
+        if (!data.records || data.records.length === 0) {
+          document.getElementById("price").innerText = "Ingen data";
+          return;
+        }
+
+        const nowHour = new Date().getHours();
+
+        // vis aktuel pris
+        const recNow = data.records.find(r =>
+          new Date(r.HourUTC).getHours() === nowHour
+        ) || data.records[0];
+        const spotDKK = recNow.SpotPriceDKK / 1000;
+        document.getElementById("price").innerText = spotDKK.toFixed(2);
+        document.getElementById("time").innerText = "Gælder kl. " + String(nowHour).padStart(2, "0") + ":00";
+
+        // lav liste med alle timer
+        const listEl = document.getElementById("dayList");
+        listEl.innerHTML = "";
+        data.records.forEach(r => {
+          const h = new Date(r.HourUTC).getHours();
+          const price = (r.SpotPriceDKK / 1000).toFixed(2);
+          const div = document.createElement("div");
+          div.className = "row" + (h === nowHour ? " now" : "");
+          div.innerHTML = `<span>${String(h).padStart(2,"0")}:00</span><span>${price} kr</span>`;
+          listEl.appendChild(div);
+        });
+
+      } catch (err) {
+        document.getElementById("price").innerText = "Fejl";
       }
-    }));
+    }
 
-    const url =
-      "https://api.energidataservice.dk/dataset/Elspotprices" +
-      "?filter=" + filter +
-      "&sort=HourUTC ASC&limit=24";
-
-    const res = await fetch(url);
-    const data = await res.json();
-
-    const hourNow = new Date().getUTCHours();
-
-    const current = data.records[hourNow];
-    const currentPrice = current.SpotPriceDKK / 1000;
-
-    document.getElementById("price").innerText = currentPrice.toFixed(2);
-    document.getElementById("time").innerText =
-      "Gælder kl. " + String(hourNow).padStart(2, "0") + ":00";
-
-    const list = document.getElementById("dayList");
-    list.innerHTML = "";
-
-    data.records.forEach((rec, index) => {
-      const hour = new Date(rec.HourUTC).getUTCHours();
-      const price = rec.SpotPriceDKK / 1000;
-
-      const row = document.createElement("div");
-      row.className = "row" + (hour === hourNow ? " now" : "");
-      row.innerHTML = `
-        <span>${String(hour).padStart(2, "0")}:00</span>
-        <span>${price.toFixed(2)} kr</span>
-      `;
-
-      list.appendChild(row);
-    });
-
-  } catch (e) {
-    document.getElementById("price").innerText = "Fejl";
-  }
-}
-
-// load og opdater hvert minut
-loadPrices();
-setInterval(loadPrices, 60000);
-</script>
-
+    loadPrices();
+    setInterval(loadPrices, 60000);
+  </script>
 </body>
 </html>
