@@ -1,120 +1,74 @@
 <!DOCTYPE html>
 <html lang="da">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Spotpris DK1</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Strømpris DK1</title>
   <style>
     body {
-      background: #000;
-      color: white;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      margin: 0;
-      padding: 20px;
-    }
-    .center {
-      text-align: center;
-      margin-top: 40px;
+      font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+      background:#000;
+      color:#fff;
+      margin:0;
+      padding:20px;
     }
     .price {
-      font-size: 56px;
-      font-weight: bold;
+      font-size:60px;
+      font-weight:700;
+      margin-top:30px;
     }
-    .unit {
-      font-size: 20px;
-      opacity: 0.7;
+    .sub {
+      color:#999;
+      font-size:16px;
     }
-    .time {
-      margin-top: 10px;
-      font-size: 16px;
-      opacity: 0.5;
-    }
-    .list {
-      margin-top: 30px;
-    }
-    .row {
-      display: flex;
-      justify-content: space-between;
-      padding: 8px 12px;
-      border-bottom: 1px solid #222;
-      font-size: 18px;
-    }
-    .now {
-      background: #2962ff;
+    button {
+      margin-top:30px;
+      padding:15px;
+      width:100%;
+      font-size:18px;
+      background:#007aff;
+      color:white;
+      border:none;
+      border-radius:12px;
     }
   </style>
 </head>
 <body>
-  <div class="center">
-    <div class="price" id="price">–</div>
-    <div class="unit">kr / kWh</div>
-    <div class="time" id="time">Henter pris…</div>
 
-    <button onclick="toggleList()" style="margin-top:20px; padding:12px 20px; font-size:18px;">
-      Se dagens priser
-    </button>
-  </div>
+<h1>⚡ DK1 Spotpris</h1>
+<div class="price" id="price">Indlæser...</div>
+<div class="sub" id="time"></div>
 
-  <div class="list" id="dayList" style="display: none;"></div>
+<button onclick="loadPrices()">Opdater</button>
 
-  <script>
-    function toggleList(){
-      const el = document.getElementById("dayList");
-      el.style.display = (el.style.display === "none") ? "block" : "none";
-    }
+<script>
+async function loadPrices() {
+  const res = await fetch('https://api.energidataservice.dk/dataset/Elspotprices?filter=%7B%22PriceArea%22:%22DK1%22%7D');
+  const data = await res.json();
+  const records = data.records;
 
-    async function loadPrices(){
-      const today = new Date();
-      const date = today.toISOString().split("T")[0];
+  const now = new Date();
+  const currentHour = now.getHours();
 
-      const filter = encodeURIComponent(JSON.stringify({
-        PriceArea: "DK1",
-        HourUTC: {
-          gte: date + "T00:00:00Z",
-          lte: date + "T23:59:59Z"
-        }
-      }));
+  const current = records.find(r => {
+    const hour = new Date(r.HourDK).getHours();
+    return hour === currentHour;
+  });
 
-      const url = `https://api.energidataservice.dk/dataset/Elspotprices?filter=${filter}&sort=HourUTC ASC&limit=24`;
+  if (!current) {
+    document.getElementById('price').innerText = 'Ingen data';
+    return;
+  }
 
-      try {
-        const res = await fetch(url);
-        const data = await res.json();
+  // SpotPriceDKK er per MWh → del med 1000 for kr/kWh
+  const price = (current.SpotPriceDKK / 1000).toFixed(2);
 
-        if (!data.records || data.records.length === 0) {
-          document.getElementById("price").innerText = "Ingen data";
-          return;
-        }
+  document.getElementById('price').innerText = price + ' kr/kWh';
+  document.getElementById('time').innerText = 'Kl: ' + currentHour + ':00';
+}
 
-        const nowHour = new Date().getHours();
+loadPrices();
+</script>
 
-        // vis aktuel pris
-        const recNow = data.records.find(r =>
-          new Date(r.HourUTC).getHours() === nowHour
-        ) || data.records[0];
-        const spotDKK = recNow.SpotPriceDKK / 1000;
-        document.getElementById("price").innerText = spotDKK.toFixed(2);
-        document.getElementById("time").innerText = "Gælder kl. " + String(nowHour).padStart(2, "0") + ":00";
-
-        // lav liste med alle timer
-        const listEl = document.getElementById("dayList");
-        listEl.innerHTML = "";
-        data.records.forEach(r => {
-          const h = new Date(r.HourUTC).getHours();
-          const price = (r.SpotPriceDKK / 1000).toFixed(2);
-          const div = document.createElement("div");
-          div.className = "row" + (h === nowHour ? " now" : "");
-          div.innerHTML = `<span>${String(h).padStart(2,"0")}:00</span><span>${price} kr</span>`;
-          listEl.appendChild(div);
-        });
-
-      } catch (err) {
-        document.getElementById("price").innerText = "Fejl";
-      }
-    }
-
-    loadPrices();
-    setInterval(loadPrices, 60000);
-  </script>
 </body>
 </html>
